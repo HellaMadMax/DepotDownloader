@@ -109,158 +109,216 @@ namespace DepotDownloader
                 return 1;
             }
 
-            var pubFile = GetParameter(args, "-pubfile", ContentDownloader.INVALID_MANIFEST_ID);
-            var ugcId = GetParameter(args, "-ugc", ContentDownloader.INVALID_MANIFEST_ID);
-            if (pubFile != ContentDownloader.INVALID_MANIFEST_ID)
+            if (InitializeSteam(username, password))
             {
-                #region Pubfile Downloading
-
-                if (InitializeSteam(username, password))
+                var updateApp = true;
+                var InstallDirectory = ContentDownloader.Config.InstallDirectory;
+                var pubFileList = GetParameterList<ulong>(args, "-pubfile");
+                var pubFileDir = GetParameter<string>(args, "-pubfile-dir");
+                var pubFileWebDir = GetParameter<string>(args, "-pubfile-web-dir");
+                for (var i = 0; i < pubFileList.Count; i++)
                 {
+                    var pubFile = pubFileList[i];
+                    if (pubFile == ContentDownloader.INVALID_MANIFEST_ID)
+                    {
+                        continue;
+                    }
+                    updateApp = false;
+                    #region Pubfile Downloading
                     try
                     {
-                        await ContentDownloader.DownloadPubfileAsync(appId, pubFile).ConfigureAwait(false);
+                        var details = ContentDownloader.steam3.GetPublishedFileDetails(appId, pubFile);
+                        if (!string.IsNullOrEmpty(details?.file_url))
+                        {
+                            if (!string.IsNullOrEmpty(pubFileWebDir))
+                            {
+                                ContentDownloader.Config.InstallDirectory = pubFileWebDir;
+                            }
+                            else if (!string.IsNullOrEmpty(pubFileDir))
+                            {
+                                ContentDownloader.Config.InstallDirectory = pubFileDir;
+                            }
+                            else
+                            {
+                                ContentDownloader.Config.InstallDirectory = InstallDirectory;
+                            }
+                            await ContentDownloader.DownloadWebFile(appId, details.filename, details.file_url).ConfigureAwait(false);
+                        }
+                        else if (details?.hcontent_file > 0)
+                        {
+                            if (!string.IsNullOrEmpty(pubFileDir))
+                            {
+                                ContentDownloader.Config.InstallDirectory = Path.Combine(pubFileDir, "PUB-" + pubFile);
+                            }
+                            else
+                            {
+                                ContentDownloader.Config.InstallDirectory = Path.Combine(InstallDirectory, "PUB-" + pubFile);
+                            }
+                            await ContentDownloader.DownloadAppAsync(appId, new List<(uint, ulong)> { (appId, details.hcontent_file) }, ContentDownloader.DEFAULT_BRANCH, null, null, null, false, true).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            Console.WriteLine("Unable to locate manifest ID for published file {0}", pubFile);
+                        }
                     }
-                    catch (Exception ex) when (
-                        ex is ContentDownloaderException
-                        || ex is OperationCanceledException)
+                    catch (Exception ex) when (ex is ContentDownloaderException || ex is OperationCanceledException)
                     {
                         Console.WriteLine(ex.Message);
+                        ContentDownloader.ShutdownSteam3();
                         return 1;
                     }
                     catch (Exception e)
                     {
                         Console.WriteLine("Download failed to due to an unhandled exception: {0}", e.Message);
+                        ContentDownloader.ShutdownSteam3();
                         throw;
                     }
-                    finally
+                    #endregion
+                }
+                var ugcIdList = GetParameterList<ulong>(args, "-ugc");
+                var ugcIdDir = GetParameter<string>(args, "-ugc-dir");
+                var ugcIdWebDir = GetParameter<string>(args, "-ugc-web-dir");
+                for (var i = 0; i < ugcIdList.Count; i++)
+                {
+                    var ugcId = ugcIdList[i];
+                    if (ugcId == ContentDownloader.INVALID_MANIFEST_ID)
                     {
-                        ContentDownloader.ShutdownSteam3();
+                        continue;
                     }
-                }
-                else
-                {
-                    Console.WriteLine("Error: InitializeSteam failed");
-                    return 1;
-                }
-
-                #endregion
-            }
-            else if (ugcId != ContentDownloader.INVALID_MANIFEST_ID)
-            {
-                #region UGC Downloading
-
-                if (InitializeSteam(username, password))
-                {
+                    updateApp = false;
+                    #region UGC Downloading
                     try
                     {
-                        await ContentDownloader.DownloadUGCAsync(appId, ugcId).ConfigureAwait(false);
+                        SteamCloud.UGCDetailsCallback details = null;
+
+                        if (ContentDownloader.steam3.steamUser.SteamID.AccountType != EAccountType.AnonUser)
+                        {
+                            details = ContentDownloader.steam3.GetUGCDetails(ugcId);
+                        }
+                        else
+                        {
+                            Console.WriteLine("Unable to query UGC details for {0} from an anonymous account", ugcId);
+                        }
+
+                        if (!string.IsNullOrEmpty(details?.URL))
+                        {
+                            if (!string.IsNullOrEmpty(ugcIdWebDir))
+                            {
+                                ContentDownloader.Config.InstallDirectory = ugcIdWebDir;
+                            }
+                            else if (!string.IsNullOrEmpty(ugcIdDir))
+                            {
+                                ContentDownloader.Config.InstallDirectory = ugcIdDir;
+                            }
+                            else
+                            {
+                                ContentDownloader.Config.InstallDirectory = InstallDirectory;
+                            }
+                            await ContentDownloader.DownloadWebFile(appId, details.FileName, details.URL).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            if (!string.IsNullOrEmpty(ugcIdDir))
+                            {
+                                ContentDownloader.Config.InstallDirectory = Path.Combine(ugcIdDir, "UGC-" + ugcId);
+                            }
+                            else
+                            {
+                                ContentDownloader.Config.InstallDirectory = Path.Combine(InstallDirectory, "UGC-" + ugcId);
+                            }
+                            await ContentDownloader.DownloadAppAsync(appId, new List<(uint, ulong)> { (appId, ugcId) }, ContentDownloader.DEFAULT_BRANCH, null, null, null, false, true).ConfigureAwait(false);
+                        }
                     }
-                    catch (Exception ex) when (
-                        ex is ContentDownloaderException
-                        || ex is OperationCanceledException)
+                    catch (Exception ex) when (ex is ContentDownloaderException || ex is OperationCanceledException)
                     {
                         Console.WriteLine(ex.Message);
+                        ContentDownloader.ShutdownSteam3();
                         return 1;
                     }
                     catch (Exception e)
                     {
                         Console.WriteLine("Download failed to due to an unhandled exception: {0}", e.Message);
+                        ContentDownloader.ShutdownSteam3();
                         throw;
                     }
-                    finally
+                    #endregion
+                }
+                ContentDownloader.Config.InstallDirectory = InstallDirectory;
+                if (updateApp)
+                {
+                    #region App downloading
+                    var branch = GetParameter<string>(args, "-branch") ?? GetParameter<string>(args, "-beta") ?? ContentDownloader.DEFAULT_BRANCH;
+                    ContentDownloader.Config.BetaPassword = GetParameter<string>(args, "-betapassword");
+
+                    ContentDownloader.Config.DownloadAllPlatforms = HasParameter(args, "-all-platforms");
+                    var os = GetParameter<string>(args, "-os");
+
+                    if (ContentDownloader.Config.DownloadAllPlatforms && !String.IsNullOrEmpty(os))
                     {
+                        Console.WriteLine("Error: Cannot specify -os when -all-platforms is specified.");
                         ContentDownloader.ShutdownSteam3();
-                    }
-                }
-                else
-                {
-                    Console.WriteLine("Error: InitializeSteam failed");
-                    return 1;
-                }
-
-                #endregion
-            }
-            else
-            {
-                #region App downloading
-
-                var branch = GetParameter<string>(args, "-branch") ?? GetParameter<string>(args, "-beta") ?? ContentDownloader.DEFAULT_BRANCH;
-                ContentDownloader.Config.BetaPassword = GetParameter<string>(args, "-betapassword");
-
-                ContentDownloader.Config.DownloadAllPlatforms = HasParameter(args, "-all-platforms");
-                var os = GetParameter<string>(args, "-os");
-
-                if (ContentDownloader.Config.DownloadAllPlatforms && !String.IsNullOrEmpty(os))
-                {
-                    Console.WriteLine("Error: Cannot specify -os when -all-platforms is specified.");
-                    return 1;
-                }
-
-                var arch = GetParameter<string>(args, "-osarch");
-
-                ContentDownloader.Config.DownloadAllLanguages = HasParameter(args, "-all-languages");
-                var language = GetParameter<string>(args, "-language");
-
-                if (ContentDownloader.Config.DownloadAllLanguages && !String.IsNullOrEmpty(language))
-                {
-                    Console.WriteLine("Error: Cannot specify -language when -all-languages is specified.");
-                    return 1;
-                }
-
-                var lv = HasParameter(args, "-lowviolence");
-
-                var depotManifestIds = new List<(uint, ulong)>();
-                var isUGC = false;
-
-                var depotIdList = GetParameterList<uint>(args, "-depot");
-                var manifestIdList = GetParameterList<ulong>(args, "-manifest");
-                if (manifestIdList.Count > 0)
-                {
-                    if (depotIdList.Count != manifestIdList.Count)
-                    {
-                        Console.WriteLine("Error: -manifest requires one id for every -depot specified");
                         return 1;
                     }
 
-                    var zippedDepotManifest = depotIdList.Zip(manifestIdList, (depotId, manifestId) => (depotId, manifestId));
-                    depotManifestIds.AddRange(zippedDepotManifest);
-                }
-                else
-                {
-                    depotManifestIds.AddRange(depotIdList.Select(depotId => (depotId, ContentDownloader.INVALID_MANIFEST_ID)));
-                }
+                    var arch = GetParameter<string>(args, "-osarch");
 
-                if (InitializeSteam(username, password))
-                {
+                    ContentDownloader.Config.DownloadAllLanguages = HasParameter(args, "-all-languages");
+                    var language = GetParameter<string>(args, "-language");
+
+                    if (ContentDownloader.Config.DownloadAllLanguages && !String.IsNullOrEmpty(language))
+                    {
+                        Console.WriteLine("Error: Cannot specify -language when -all-languages is specified.");
+                        ContentDownloader.ShutdownSteam3();
+                        return 1;
+                    }
+
+                    var lv = HasParameter(args, "-lowviolence");
+
+                    var depotManifestIds = new List<(uint, ulong)>();
+                    var isUGC = false;
+
+                    var depotIdList = GetParameterList<uint>(args, "-depot");
+                    var manifestIdList = GetParameterList<ulong>(args, "-manifest");
+                    if (manifestIdList.Count > 0)
+                    {
+                        if (depotIdList.Count != manifestIdList.Count)
+                        {
+                            Console.WriteLine("Error: -manifest requires one id for every -depot specified");
+                            return 1;
+                        }
+
+                        var zippedDepotManifest = depotIdList.Zip(manifestIdList, (depotId, manifestId) => (depotId, manifestId));
+                        depotManifestIds.AddRange(zippedDepotManifest);
+                    }
+                    else
+                    {
+                        depotManifestIds.AddRange(depotIdList.Select(depotId => (depotId, ContentDownloader.INVALID_MANIFEST_ID)));
+                    }
+
                     try
                     {
                         await ContentDownloader.DownloadAppAsync(appId, depotManifestIds, branch, os, arch, language, lv, isUGC).ConfigureAwait(false);
                     }
-                    catch (Exception ex) when (
-                        ex is ContentDownloaderException
-                        || ex is OperationCanceledException)
+                    catch (Exception ex) when (ex is ContentDownloaderException || ex is OperationCanceledException)
                     {
                         Console.WriteLine(ex.Message);
+                        ContentDownloader.ShutdownSteam3();
                         return 1;
                     }
                     catch (Exception e)
                     {
                         Console.WriteLine("Download failed to due to an unhandled exception: {0}", e.Message);
-                        throw;
-                    }
-                    finally
-                    {
                         ContentDownloader.ShutdownSteam3();
+                        return 1;
                     }
+                    #endregion
                 }
-                else
-                {
-                    Console.WriteLine("Error: InitializeSteam failed");
-                    return 1;
-                }
-
-                #endregion
+                ContentDownloader.ShutdownSteam3();
+            }
+            else
+            {
+                Console.WriteLine("Error: InitializeSteam failed");
+                return 1;
             }
 
             return 0;

@@ -25,7 +25,7 @@ namespace DepotDownloader
 
         public static DownloadConfig Config = new DownloadConfig();
 
-        private static Steam3Session steam3;
+        public static Steam3Session steam3;
         private static Steam3Session.Credentials steam3Credentials;
         private static CDNClientPool cdnPool;
 
@@ -426,7 +426,7 @@ namespace DepotDownloader
             }
         }
 
-        private static async Task DownloadWebFile(uint appId, string fileName, string url)
+        public static async Task DownloadWebFile(uint appId, string fileName, string url)
         {
             string installDir;
             if (!CreateDirectories(appId, 0, out installDir))
