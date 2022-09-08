@@ -470,6 +470,7 @@ namespace DepotDownloader
             }
 
             Directory.CreateDirectory(Path.Combine(configPath, CONFIG_DIR));
+            DepotConfigStore.Instance = null; // prevent Config already loaded error
             DepotConfigStore.LoadFromFile(Path.Combine(configPath, CONFIG_DIR, "depot.config"));
 
             if (steam3 != null)
