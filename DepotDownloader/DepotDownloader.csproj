@@ -12,8 +12,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="protobuf-net" Version="3.2.16" />
-    <PackageReference Include="QRCoder" Version="1.4.3" />
-    <PackageReference Include="SteamKit2" Version="2.5.0-Beta.1" />
+    <PackageReference Include="protobuf-net" Version="3.2.*" />
+    <PackageReference Include="QRCoder" Version="1.4.*" />
+    <PackageReference Include="SteamKit2" Version="2.5.*" />
   </ItemGroup>
 </Project>
